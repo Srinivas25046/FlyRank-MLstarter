@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Which Pages Should You Refresh First? — A Validated Answer From Real Search Data</title>
+<meta name="description" content="A ranking model for content refresh priority, validated honestly on FlyRank's search warehouse — baseline, model, leakage checks, and a working playbook.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #23281f;
+    --paper: #edebe0;
+    --paper-light: #f5f4ec;
+    --moss: #4d6142;
+    --moss-deep: #384a30;
+    --gold: #a9821f;
+    --rust: #9a5027;
+    --line: #c9c4b0;
+    --card: #f8f7f1;
+    --max-w: 780px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .spine {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 8px;
+    background: linear-gradient(to bottom, var(--moss) 0%, var(--moss) 22%, var(--gold) 55%, var(--rust) 100%);
+    z-index: 10;
+  }
+
+  @media (max-width: 600px) {
+    .spine { width: 5px; }
+  }
+
+  main {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    padding: 0 24px 120px 40px;
+  }
+
+  @media (max-width: 600px) {
+    main { padding: 0 18px 80px 26px; }
+  }
+
+  h1, h2, h3 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--moss-deep);
+  }
+
+  .hero {
+    padding: 96px 0 56px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--rust);
+    margin-bottom: 18px;
+  }
+
+  h1 {
+    font-size: clamp(2.1rem, 5vw, 3rem);
+    line-height: 1.12;
+    margin: 0 0 28px 0;
+    font-weight: 700;
+    font-optical-sizing: auto;
+  }
+
+  .abstract {
+    font-size: 1.08rem;
+    color: #3a4033;
+    border-left: 3px solid var(--gold);
+    padding-left: 20px;
+    margin-top: 32px;
+  }
+
+  .abstract p { margin: 0 0 12px 0; }
+  .abstract p:last-child { margin-bottom: 0; }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 36px;
+  }
+
+  .meta-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 5px 10px;
+    color: #4a4a3f;
+  }
+
+  section {
+    padding: 56px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  section:last-of-type { border-bottom: none; }
+
+  .section-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--gold);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  h2 { font-size: 1.65rem; margin: 0 0 22px 0; }
+  h3 { font-size: 1.15rem; margin: 28px 0 12px 0; color: var(--rust); }
+
+  p { margin: 0 0 16px 0; }
+
+  .lede {
+    font-size: 1.12rem;
+    color: #333c2b;
+  }
+
+  .callout {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--rust);
+    border-radius: 4px;
+    padding: 18px 22px;
+    margin: 22px 0;
+  }
+
+  .callout.finding { border-left-color: var(--moss); }
+  .callout.limit { border-left-color: var(--gold); }
+
+  .callout p:last-child { margin-bottom: 0; }
+
+  .callout-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--rust);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .callout.finding .callout-label { color: var(--moss-deep); }
+  .callout.limit .callout-label { color: var(--gold); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 0.92rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #5a5a4c;
+    font-weight: 600;
+  }
+
+  td.num, th.num { font-family: 'IBM Plex Mono', monospace; }
+
+  .highlight-cell { color: var(--moss-deep); font-weight: 600; }
+  .caution-cell { color: var(--rust); font-weight: 600; }
+
+  .chart-wrap {
+    margin: 28px 0 8px 0;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 24px 20px 16px 20px;
+  }
+
+  .chart-caption {
+    font-size: 0.88rem;
+    color: #55584a;
+    margin-top: 8px;
+    font-style: italic;
+  }
+
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 8px; }
+
+  code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.88em;
+    background: rgba(0,0,0,0.05);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .tier-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 22px 0;
+  }
+
+  .tier-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 16px;
+  }
+
+  .tier-card .tier-n {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 600;
+    display: block;
+  }
+
+  .tier-card.priority { border-top: 3px solid var(--rust); }
+  .tier-card.review { border-top: 3px solid var(--gold); }
+  .tier-card.monitor { border-top: 3px solid var(--moss); }
+  .tier-card.excluded { border-top: 3px solid var(--line); }
+
+  .tier-card .tier-n.priority-n { color: var(--rust); }
+  .tier-card .tier-n.gold-n { color: var(--gold); }
+  .tier-card .tier-n.moss-n { color: var(--moss-deep); }
+
+  .tier-label { font-size: 0.82rem; color: #55584a; }
+
+  a { color: var(--rust); }
+  a:hover { color: var(--moss-deep); }
+
+  footer {
+    padding: 48px 0 0 0;
+    font-size: 0.9rem;
+    color: #5a5a4c;
+  }
+
+  .repro-list a {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+  }
+
+  .footer-credit {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+
+<div class="spine" aria-hidden="true"></div>
+
+<main>
+
+  <div class="hero">
+    <span class="eyebrow">Search Intelligence Capstone &middot; Refresh / Content Opportunity Scoring</span>
+    <h1>Which pages should you refresh first? A validated answer from real search data.</h1>
+
+    <div class="abstract">
+      <p><strong>Question.</strong> Given a large portfolio of content pages, which ones are worth reviewing for a refresh first — and how much better than guesswork can a data-driven queue actually get?</p>
+      <p><strong>Data.</strong> A real, pseudonymized cohort from FlyRank's search-and-analytics warehouse: 145,279 client-content pairs across 42 active clients, observed in February 2026 and checked against their own outcome the following March.</p>
+      <p><strong>Method.</strong> A fully transparent baseline rule, then two classifiers validated under both a naive random split and a client-held-out split — built specifically to catch whether a model generalizes or just memorizes.</p>
+      <p><strong>Result.</strong> The naive split flattered a Random Forest into near-perfect (98&ndash;100%) apparent precision; forcing it to generalize to unseen clients dropped that to an honest 70% (3.5&times; over a 20% baseline). A simpler logistic regression showed the opposite pattern, better under the honest split (78&ndash;85%) — reported as promising, not proven, on a small held-out sample.</p>
+      <p><strong>Use.</strong> The result ships as a working, human-reviewed priority queue with a volume floor, reason codes, and a monitoring plan — built to support a content team's decisions, not replace them.</p>
+    </div>
+
+    <div class="meta-row">
+      <span class="meta-tag">n = 145,279 pairs</span>
+      <span class="meta-tag">42 clients</span>
+      <span class="meta-tag">Feb &rarr; Mar 2026</span>
+      <span class="meta-tag">Ranking / scoring task</span>
+      <span class="meta-tag">Grouped-split validated</span>
+    </div>
+  </div>
+
+  <section id="intro">
+    <span class="section-num">01</span>
+    <h2>Introduction</h2>
+    <p class="lede">A content team managing hundreds of thousands of pages across dozens of clients can't manually review everything every month. They need an ordered queue: what to look at first, and why.</p>
+    <p>Here's the problem with a simple "is this page declining?" filter: a page that dropped from 50,000 monthly impressions to 40,000 gets the same label as a page that dropped from 20 impressions to 15. Both are technically "declining," but no reviewer would treat them the same way. The real decision isn't binary — it's an ordering. That makes this a <strong>ranking / scoring problem</strong>, not a classification problem, and it changes which tools and which metrics actually apply.</p>
+    <p>This paper walks the full arc: a fully transparent rule anyone could audit, a validated model that had to earn the right to be trusted more than that rule, the honest gaps found along the way, and a working playbook a person can actually run. The mistakes caught and fixed in the process are reported alongside the final numbers — they're part of the evidence, not an embarrassment to edit out.</p>
+  </section>
+
+  <section id="data">
+    <span class="section-num">02</span>
+    <h2>Data</h2>
+    <p><strong>Source:</strong> the FlyRank ML Internship warehouse, a gated dataset released on Hugging Face (credit and link in Acknowledgments). All identifiers in this dataset — and everywhere in this paper — are pseudonymous hashes; no client name, domain, or real query appears anywhere.</p>
+    <p><strong>Tables used:</strong> the daily performance fact table (partitioned by month), joined to client and content dimension tables for tracking-history and content-age metadata.</p>
+    <p><strong>Time window:</strong> February 2026 as the feature month, March 2026 as a genuinely forward-looking outcome month — not a same-window relabeling of the same data.</p>
+    <p><strong>Scale:</strong> 7.35 million daily (date &times; client &times; content) rows in February alone, across 54 clients with any tracked activity that month — rolling up to 145,279 distinct (client, content) pairs with real traffic in both February and March, across the 42 of those clients with at least one such pair.</p>
+
+    <h3>What was excluded, and why</h3>
+    <ul>
+      <li>The sealed final month in the release and its reduced-sample companion table are never used for feature or label development — they're the natural "answer key" for any past-to-future label and are reserved as a held-out check only.</li>
+      <li>Rows before a client's own tracking start date are excluded via explicit availability flags, never treated as real zero activity.</li>
+      <li>No raw queries, URLs, or client-identifying information of any kind are used or shown — only the warehouse's own pseudonymous identifiers.</li>
+    </ul>
+
+    <div class="callout limit">
+      <span class="callout-label">Data quality, stated plainly</span>
+      <p>GA4 (engagement) tracking is present for only about <strong>2% of February's daily rows</strong>, versus roughly <strong>35.6%</strong> for search-console data — even within one ordinary month, not just at each client's tracking start. This single fact explains why close to half of all (client, content) pairs carry no usable GA4-derived signal at all, and why the modeling work below excludes them from scoring rather than guessing.</p>
+    </div>
+  </section>
+
+  <section id="methodology">
+    <span class="section-num">03</span>
+    <h2>Methodology</h2>
+
+    <h3>Task framing</h3>
+    <p>This is a ranking/scoring task. The label used — "did this page's impressions fall by 20% or more from February to March" — is a defined <em>proxy</em>, not an observed ground truth. No one has ever recorded a judgment of "this page needed a refresh" for these pages; the proxy stands in for it, and is named as a proxy throughout.</p>
+
+    <h3>Features</h3>
+    <p>Everything used is knowable at the end of February, before March exists: total search impressions and clicks, average search position, GA4 sessions, AI-referral sessions, content age in days, and a within-February "already fading" flag (comparing the first half of the month against the second) — built deliberately so no feature can ever see March's outcome.</p>
+
+    <h3>Baseline</h3>
+    <p>An intentionally simple, fully auditable rule: flag a page if it falls in an <em>empirically checked</em> elevated-risk age band (90&ndash;365 days — a naive "older is always worse" assumption was tested against real data and rejected) and carries enough traffic to matter (&ge;500 monthly impressions, itself checked against real bucket data rather than assumed), then rank by raw impression volume as a stand-in for the size of the opportunity.</p>
+
+    <h3>Validation design — the central decision in this project</h3>
+    <p>A naive random row-level split can put 80% of a given client's pages into training and test on the remaining 20% of the <em>same</em> client — rewarding a model for memorizing that client's own baseline traffic levels, not for learning something that generalizes to a client it has never seen. Every model result below is reported under <strong>both</strong> a naive random split and a client-held-out split, so the gap between them is visible rather than hidden.</p>
+
+    <h3>Leakage checks — two, not one</h3>
+    <p>A static check confirms no feature touches the March outcome or any product-decision field. A dynamic check goes further: it deliberately injects the literal March outcome column as if it were a feature, confirms precision jumps to a suspicious 100%, then confirms it collapses back down once removed — proving the test harness would actually catch a real leak, not just assert one doesn't exist.</p>
+
+    <h3>Auditing someone else's claims, the same way</h3>
+    <p>The same scrutiny was turned on FlyRank's own public research paper, which inspired this format. Two open, respectfully-framed methodology questions: does a headline "52&times; traffic lift from refreshing" figure separate the effect of refreshing from the effect of <em>choosing</em> which pages to refresh (selection vs. causation)? And do three reported model-accuracy figures ever state the base rate needed to distinguish real skill from a majority-class guess? Neither is an accusation — it's the same standard applied to this paper's own numbers below.</p>
+  </section>
+
+  <section id="results">
+    <span class="section-num">04</span>
+    <h2>Results</h2>
+
+    <p>The baseline rule scores <strong>Precision@20 of 30.0%</strong> against a 26.1% base rate — a real but thin 1.15&times; lift. That's the bar the model has to clear, and it's a low one on purpose: a baseline should be beatable.</p>
+
+    <div class="chart-wrap">
+      <svg viewBox="0 0 640 320" width="100%" role="img" aria-label="Bar chart comparing precision at 20 across baseline, logistic regression, and random forest, under random and grouped-by-client splits">
+        <!-- axis -->
+        <line x1="60" y1="270" x2="620" y2="270" stroke="#c9c4b0" stroke-width="1.5"/>
+        <!-- gridlines -->
+        <g stroke="#dcd8c8" stroke-width="1">
+          <line x1="60" y1="220" x2="620" y2="220"/>
+          <line x1="60" y1="170" x2="620" y2="170"/>
+          <line x1="60" y1="120" x2="620" y2="120"/>
+          <line x1="60" y1="70" x2="620" y2="70"/>
+          <line x1="60" y1="20" x2="620" y2="20"/>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#6a6a5a">
+          <text x="46" y="274" text-anchor="end">0%</text>
+          <text x="46" y="224" text-anchor="end">20%</text>
+          <text x="46" y="174" text-anchor="end">40%</text>
+          <text x="46" y="124" text-anchor="end">60%</text>
+          <text x="46" y="74" text-anchor="end">80%</text>
+          <text x="46" y="24" text-anchor="end">100%</text>
+        </g>
+        <!-- baseline reference line at 20% -->
+        <line x1="60" y1="220" x2="620" y2="220" stroke="#9a5027" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <text x="565" y="212" font-family="IBM Plex Mono, monospace" font-size="11" fill="#9a5027">baseline 20%</text>
+
+        <!-- Random split group -->
+        <g>
+          <rect x="110" y="220" width="46" height="50" fill="#4d6142"/>
+          <text x="133" y="234" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="#f5f4ec" font-weight="600">40%</text>
+          <rect x="164" y="20" width="46" height="250" fill="#9a5027"/>
+          <text x="187" y="38" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="#f5f4ec" font-weight="600">100%</text>
+          <text x="160" y="296" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#3a4033">Random split</text>
+          <text x="160" y="312" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="#6a6a5a">(naive)</text>
+        </g>
+
+        <!-- Grouped split group -->
+        <g>
+          <rect x="330" y="57" width="46" height="213" fill="#4d6142"/>
+          <text x="353" y="75" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="#f5f4ec" font-weight="600">85%</text>
+          <rect x="384" y="95" width="46" height="175" fill="#9a5027"/>
+          <text x="407" y="113" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" fill="#f5f4ec" font-weight="600">70%</text>
+          <text x="380" y="296" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#3a4033">Grouped by client</text>
+          <text x="380" y="312" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="#6a6a5a">(honest)</text>
+        </g>
+
+        <!-- legend -->
+        <g font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#3a4033">
+          <rect x="460" y="30" width="13" height="13" fill="#4d6142"/>
+          <text x="478" y="41">Logistic Regression</text>
+          <rect x="460" y="50" width="13" height="13" fill="#9a5027"/>
+          <text x="478" y="61">Random Forest</text>
+        </g>
+      </svg>
+      <p class="chart-caption">Precision@20 by model and split. The gap between random and grouped splits — not either single number — is the finding: Random Forest's apparent near-perfect score was mostly client memorization; logistic regression showed the opposite pattern on a small held-out sample.</p>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Split</th><th class="num">k</th><th class="num">Base rate</th><th class="num">Baseline</th><th class="num">Logistic Reg.</th><th class="num">Random Forest</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Grouped by client</td><td class="num">20</td><td class="num">40.0%</td><td class="num">20.0%</td><td class="num highlight-cell">85.0%</td><td class="num">70.0%</td></tr>
+        <tr><td>Grouped by client</td><td class="num">50</td><td class="num">40.0%</td><td class="num">20.0%</td><td class="num highlight-cell">78.0%</td><td class="num">70.0%</td></tr>
+        <tr><td>Random (naive)</td><td class="num">20</td><td class="num">30.5%</td><td class="num">25.0%</td><td class="num">40.0%</td><td class="num caution-cell">100.0%</td></tr>
+        <tr><td>Random (naive)</td><td class="num">50</td><td class="num">30.5%</td><td class="num">20.0%</td><td class="num">50.0%</td><td class="num caution-cell">98.0%</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout finding">
+      <span class="callout-label">The honest finding is the split, not a single number</span>
+      <p>Random Forest's precision collapsed from a suspicious 98&ndash;100% under the naive split to a real, trustworthy 70% once client identity could no longer be memorized — a textbook case of validation leakage through group structure, caught and corrected by design, not by accident.</p>
+    </div>
+
+    <div class="callout limit">
+      <span class="callout-label">A result that deserves scrutiny, not a victory lap</span>
+      <p>Logistic regression went the <em>other</em> way — higher under the grouped split (85%) than the random split (40%). This is measured on only <strong>5 held-out clients</strong>, a thin, noisy sample where one unusual client can swing the whole number, and that slice happens to carry a higher base rate (40% vs. 30.5%), which mechanically inflates raw precision somewhat. The direction still favors the grouped split after correcting for that with lift (2.1&times; vs. 1.3&times;), but this paper treats 85% as <em>promising, not proven</em> without repeating the split across different held-out client groups.</p>
+    </div>
+
+    <h3>Where the model is actually wrong</h3>
+    <p>Calibration is well-behaved at the extremes: excellent at very low traffic (41.4% actual vs. 41.1% predicted decline rate for pages under 100 impressions — exactly the segment the baseline rule discards as noise) and reasonable at moderate-to-high traffic (14.8% vs. 14.7% for 2,000&ndash;10,000 impressions). It under-predicts risk by roughly 10 points in the 100&ndash;2,000 impression middle range.</p>
+    <p>Its clearest false positives are pages with single-digit monthly impressions (3, 7, and 2 impressions) — small-sample noise, not real signal. Its clearest false negatives are moderate-traffic pages (530, 184, and 1,155 impressions) with zero warning sign anywhere in February itself — a real structural limit: no February-only feature set can foresee a decline that has no February-internal precursor.</p>
+
+    <h3>Leakage, confirmed both ways</h3>
+    <p>Deliberately injecting the literal March outcome as a feature drove precision@20 to 100.0%; removing it dropped it back to the 85.0% honest number above — a 15-point collapse confirming the test harness is sensitive to leakage, not blind to it.</p>
+  </section>
+
+  <section id="limitations">
+    <span class="section-num">05</span>
+    <h2>Limitations &amp; honest framing</h2>
+    <ul>
+      <li><strong>This is cross-sectional, single-cohort data</strong> — one February&rarr;March transition. It does not establish that refreshing a flagged page <em>causes</em> recovery; no experiment was run, and no claim here says otherwise.</li>
+      <li><strong>The 85% logistic-regression figure rests on 5 held-out clients.</strong> Treat 70% (Random Forest's grouped-split number) as the floor this recommendation should clear; treat 85% as an unconfirmed upside.</li>
+      <li><strong>Roughly half the panel (49.9%) has no usable GA4 signal</strong> and is excluded from scoring entirely — never silently guessed at as "low priority."</li>
+      <li><strong>The deployed model cannot foresee a decline with no within-February warning sign</strong> — a genuinely sudden, unprecedented drop will be missed regardless of tuning.</li>
+      <li><strong>Every identifier used is a pseudonymous hash</strong> from FlyRank's own release; no client, domain, or query is named anywhere in this paper or its underlying repository.</li>
+    </ul>
+  </section>
+
+  <section id="recommendations">
+    <span class="section-num">06</span>
+    <h2>Ranked recommendations — the playbook</h2>
+    <p>The validated model above ships as a working, four-tier priority queue. A volume floor of 500 monthly impressions gates which pages can ever enter an actionable tier, however high their raw score — a fix added after catching a real failure mode mid-build (see callout).</p>
+
+    <div class="tier-grid">
+      <div class="tier-card priority">
+        <span class="tier-n priority-n">2,494</span>
+        <span class="tier-label">refresh_priority</span>
+      </div>
+      <div class="tier-card review">
+        <span class="tier-n gold-n">4,988</span>
+        <span class="tier-label">review</span>
+      </div>
+      <div class="tier-card monitor">
+        <span class="tier-n moss-n">17,459</span>
+        <span class="tier-label">monitor</span>
+      </div>
+      <div class="tier-card excluded">
+        <span class="tier-n">47,908</span>
+        <span class="tier-label">insufficient_volume (excluded)</span>
+      </div>
+    </div>
+
+    <div class="callout finding">
+      <span class="callout-label">A mistake, left in the record on purpose</span>
+      <p>An earlier version of this pipeline ranked purely by raw model probability. Its top 20 recommendations were entirely pages with 1&ndash;8 monthly impressions — a "decline" from 1 impression to 0 is a 100% drop that means nothing. Adding the volume floor fixed this: every page now in the top tier carries real within-February decline evidence, not just size or age, and 0 of the 2,494 <code>refresh_priority</code> pages lack that evidence.</p>
+    </div>
+
+    <h3>Before acting, a person should check</h3>
+    <ul>
+      <li>Whether the decline looks seasonal rather than structural.</li>
+      <li>Whether a tracking or tagging change explains the drop rather than real audience loss.</li>
+      <li>Whether the page is still strategically relevant at all — the model has no concept of business priority, only traffic pattern.</li>
+    </ul>
+
+    <h3>What should never be automated</h3>
+    <ul>
+      <li>No auto-publishing or auto-editing content from a score alone.</li>
+      <li>No treating <code>monitor</code> as "ignore permanently" — it means recheck next cycle.</li>
+      <li>No using this score as sole justification for removing or de-indexing a page.</li>
+      <li>No applying this specific model to a brand-new client with no February&ndash;March history of its own.</li>
+    </ul>
+
+    <h3>Retrain triggers</h3>
+    <ul>
+      <li>Real-world precision@20 falling below the 70% floor for two consecutive review cycles.</li>
+      <li>The observed base decline rate drifting meaningfully outside the 30&ndash;40% range seen here.</li>
+      <li>The share of unscorable (missing-GA4) rows growing well beyond the current ~50%.</li>
+      <li>At minimum, once per quarter regardless — this model has only ever seen one month's transition.</li>
+    </ul>
+  </section>
+
+  <section id="reproducibility">
+    <span class="section-num">07</span>
+    <h2>Reproducibility</h2>
+    <p>Every step above — the research question, task framing, data contract, baseline, model, validation audit, and playbook — is a runnable, committed notebook. Random seed fixed at 42 throughout. Exact table names, column names, and thresholds are stated inline in the notebooks, not just summarized here.</p>
+    <ul class="repro-list">
+      <li><a href="https://github.com/Srinivas25046/FlyRank-MLstarter/blob/main/work/notebooks/w01_research_question.ipynb">w01_research_question.ipynb</a> — lane and question</li>
+      <li><a href="https://github.com/Srinivas25046/FlyRank-MLstarter/blob/main/work/notebooks/w02_ml_task_framing.ipynb">w02_ml_task_framing.ipynb</a> — task type, target, metric</li>
+      <li><a href="https://github.com/Srinivas25046/FlyRank-MLstarter/blob/main/work/notebooks/w03_data_contract.ipynb">w03_data_contract.ipynb</a> — grain, fields, leakage trap</li>
+      <li><a href="https://github.com/Srinivas25046/FlyRank-MLstarter/blob/main/work/notebooks/w04_baseline_score.ipynb">w04_baseline_score.ipynb</a> — the transparent baseline rule</li>
+      <li><a href="https://github.com/Srinivas25046/FlyRank-MLstarter/blob/main/work/notebooks/w05_model.ipynb">w05_model.ipynb</a> — model comparison, error analysis</li>
+      <li><a href="https://github.com/Srinivas25046/FlyRank-MLstarter/blob/main/work/notebooks/w06_validation_audit.ipynb">w06_validation_audit.ipynb</a> — split audit, leakage injection, claim rewrites</li>
+      <li><a href="https://github.com/Srinivas25046/FlyRank-MLstarter/blob/main/work/notebooks/w07_action_playbook.ipynb">w07_action_playbook.ipynb</a> — the deployed playbook</li>
+    </ul>
+  </section>
+
+  <footer>
+    <div class="footer-credit">
+      <p><strong>Acknowledgments &amp; data credit.</strong> Built on the FlyRank ML Internship dataset. Data source: <a href="https://flyrank.ai">flyrank.ai</a>.</p>
+    </div>
+  </footer>
+
+</main>
+
+</body>
+</html>
